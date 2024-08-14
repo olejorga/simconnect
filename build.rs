@@ -6,7 +6,7 @@ fn main() {
     println!("cargo:rustc-link-search=lib");
 
     // Tell cargo to tell rustc to link the library
-    println!("cargo:rustc-link-lib=SimConnect");
+    println!("cargo:rustc-link-lib=static=SimConnect");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
