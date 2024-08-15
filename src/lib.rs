@@ -408,37 +408,38 @@ use std::ptr;
 //     }
 // }
 
-pub struct Name(String);
-pub struct Unit(String);
+pub struct Name(pub String);
+pub struct Unit(pub String);
 
 pub struct Variable {
-    name: Name,
-    unit: Unit,
-    value: f32,
+    pub name: Name,
+    pub unit: Unit,
+    pub value: f32,
 }
 
 pub struct Event {
-    name: Name,
-    unit: Unit,
-    value: f32,
+    pub name: Name,
+    pub unit: Unit,
+    pub value: f32,
 }
 
 pub enum Message {
     Open,
-    // Close,
-    // Exception(String),
+    Quit,
+    Exception(String),
     // Variable(Variable),
 }
 
-#[derive(Debug)]
 pub struct Client {
     client: HANDLE,
+    variables: Vec<Variable>
 }
 
 impl Default for Client {
     fn default() -> Self {
         Self {
             client: std::ptr::null_mut(),
+            variables: Vec::new()
         }
     }
 }
@@ -500,41 +501,65 @@ impl Client {
             return match (*buffer).dwID as SIMCONNECT_RECV_ID {
                 SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_OPEN => {
                     let data: &SIMCONNECT_RECV_OPEN = transmute_copy(&(buffer as *const SIMCONNECT_RECV_OPEN));
-                    // let sim_vars_ptr = std::ptr::addr_of!(data.dwData) as *const SimVars;
-                    // let sim_vars_val = std::ptr::read_unaligned(sim_vars_ptr);
                     Some(Message::Open)
-                }
-                
-
-                
-                // Ok(DispatchResult::Open(
-                //     ,
-                // )),
-                // SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_QUIT => Ok(DispatchResult::Quit(
-                //     transmute_copy(&(data_buf as *const SIMCONNECT_RECV_QUIT)),
-                // )),
-                // SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_EXCEPTION => Ok(DispatchResult::Exception(
-                //     transmute_copy(&(data_buf as *const SIMCONNECT_RECV_EXCEPTION)),
-                // )),
-                // SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_SIMOBJECT_DATA => {
-                //     Ok(DispatchResult::SimObjectData(transmute_copy(
-                //         &(data_buf as *const SIMCONNECT_RECV_SIMOBJECT_DATA),
-                //     )))
-                // }
+                },
+                SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_QUIT => {
+                    let data: &SIMCONNECT_RECV_QUIT = transmute_copy(&(buffer as *const SIMCONNECT_RECV_QUIT));
+                    Some(Message::Quit)
+                },
+                SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_EXCEPTION => {
+                    let data: &SIMCONNECT_RECV_EXCEPTION = transmute_copy(&(buffer as *const SIMCONNECT_RECV_EXCEPTION));
+                    Some(Message::Exception("".to_string()))
+                },
+                SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_SIMOBJECT_DATA => {
+                    let data: &SIMCONNECT_RECV_SIMOBJECT_DATA = transmute_copy(&(buffer as *const SIMCONNECT_RECV_SIMOBJECT_DATA));
+                    let id = data.dwDefineID;
+                    println!("DATA: {}", id);
+                    None
+                },
                 _ => None
             };
         }
     }
 
-    pub fn listen(&self, variable: Variable) -> Result<(), ()> {
-        todo!("NOT IMPLEMENTED")
-    }
+    pub fn listen(&mut self, variable: Variable) -> Result<(), ()> {
+        let name = CString::new(variable.name.0.clone()).unwrap();
+        let unit = CString::new(variable.unit.0.clone()).unwrap();
 
-    pub fn set(&self, variable: Variable) -> Result<(), ()> {
-        todo!("NOT IMPLEMENTED")
-    }
+        self.variables.push(variable);
 
-    pub fn transmit(&self, event: Event) -> Result<(), ()> {
-        todo!("NOT IMPLEMENTED")
+        let id = self.variables.len() - 1;
+
+        unsafe {
+            let mut result: i64 = 0;
+
+            result += SimConnect_AddToDataDefinition(
+                self.client,
+                id.try_into().unwrap(),
+                name.as_ptr(),
+                unit.as_ptr(),
+                SIMCONNECT_DATATYPE_SIMCONNECT_DATATYPE_FLOAT64,
+                0.0,
+                0,
+            ) as i64;
+
+            result += SimConnect_RequestDataOnSimObject(
+                self.client,
+                0,
+                id.try_into().unwrap(),
+                0,
+                SIMCONNECT_PERIOD_SIMCONNECT_PERIOD_SIM_FRAME,
+                0,
+                0,
+                0,
+                0,
+            ) as i64;
+
+            if result == 0 {
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
     }
 }
