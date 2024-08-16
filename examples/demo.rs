@@ -8,21 +8,25 @@ fn main() {
         Err(_) => println!("Failed to connect to simulator"),
     }
 
-    let var = Variable {
-        name: Name("PLANE ALTITUDE".to_string()),
-        unit: Unit("Feet".to_string()),
+    let variable = Variable {
+        name: Name("AIRSPEED INDICATED".to_string()),
+        unit: Unit("Knots".to_string()),
         value: 0.0,
     };
 
-    client.listen(var);
+    match client.observe(variable) {
+        Ok(_) => println!("Observing to indicated airspeed"),
+        Err(_) => println!("Failed to observe indicated airspeed"),
+    }
 
     loop {
         match client.receive() {
             Some(msg) => {
                 match msg {
-                    simconnect::Message::Open => print!("MESSAGE"),
-                    simconnect::Message::Quit => print!("QUIT"),
-                    simconnect::Message::Exception(excep) => print!("EXCEPTION: {}", excep)
+                    simconnect::Message::Open => println!("OPEN"),
+                    simconnect::Message::Quit => println!("QUIT"),
+                    simconnect::Message::Exception(exception) => println!("EXCEPTION: {}", exception),
+                    simconnect::Message::Variable(variable) => println!("{}", variable.value)
                 }
             },
             None => (),
