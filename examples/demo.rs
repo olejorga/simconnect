@@ -1,240 +1,123 @@
-// use std::ffi::CString;
-// use std::mem::transmute_copy;
-// use std::ptr;
-// pub struct Name(pub String);
-// pub struct Unit(pub String);
+use simconnect::{
+    SimConnect_AddToDataDefinition, SimConnect_GetNextDispatch, SimConnect_Open,
+    SimConnect_RequestDataOnSimObject, DWORD, HANDLE,
+    SIMCONNECT_DATATYPE_SIMCONNECT_DATATYPE_FLOAT64, SIMCONNECT_PERIOD_SIMCONNECT_PERIOD_SIM_FRAME,
+    SIMCONNECT_RECV, SIMCONNECT_RECV_ID, SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_SIMOBJECT_DATA,
+    SIMCONNECT_RECV_SIMOBJECT_DATA,
+};
 
-// pub struct Variable {
-//     pub name: Name,
-//     pub unit: Unit,
-//     pub value: f64,
-// }
+use std::{ffi::CString, mem::transmute_copy, ptr, thread, time::Duration};
 
-// pub struct Event {
-//     pub name: Name,
-//     pub unit: Unit,
-//     pub value: f64,
-// }
+struct Variable {
+    name: &'static str,
+    unit: &'static str,
+}
 
-// pub enum Message {
-//     Open,
-//     Quit,
-//     Exception(String),
-//     // Variable(Vec<&'a Variable>),
-// }
+#[derive(Debug)]
+struct Values {
+    speed: f64,
+    altitude: f64,
+    longitude: f64,
+    latitude: f64
+}
 
-// #[derive(Debug)]
-// pub struct Test {
-//     pub x: f64,
-//     pub y: f64
-// }
-
-// pub struct Client {
-//     client: HANDLE,
-//     variables: Vec<Variable>
-// }
-
-// impl Default for Client {
-//     fn default() -> Self {
-//         Self {
-//             client: std::ptr::null_mut(),
-//             variables: Vec::new()
-//         }
-//     }
-// }
-
-// impl Client {
-//     pub fn new() -> Self {
-//         Self::default()
-//     }
-
-//     pub fn open(&mut self, name: &str) -> Result<(), ()> {
-//         unsafe {
-//             let client_name = CString::new(name).unwrap();
-
-//             let result = SimConnect_Open(
-//                 &mut self.client,
-//                 client_name.as_ptr(),
-//                 ptr::null_mut(),
-//                 0,
-//                 ptr::null_mut(),
-//                 0,
-//             );
-
-//             if result == 0 && !self.client.is_null() {
-//                 Ok(())
-//             } else {
-//                 Err(())
-//             }
-//         }
-//     }
-
-//     pub fn close(&self) -> Result<(), ()> {
-//         unsafe {
-//             let result = SimConnect_Close(self.client);
-
-//             if result == 0 {
-//                 Ok(())
-//             } else {
-//                 Err(())
-//             }
-//         }
-//     }
-
-//     pub fn receive(&mut self) -> Option<Message> {
-//         let mut buffer: *mut SIMCONNECT_RECV = ptr::null_mut();
-//         let mut buffer_size: DWORD = 32;
-//         let buffer_size_ptr: *mut DWORD = &mut buffer_size;
-
-//         unsafe {
-//             let result = SimConnect_GetNextDispatch(
-//                 self.client,
-//                 &mut buffer,
-//                 buffer_size_ptr,
-//             );
-                        
-//             if result != 0 {
-//                 return None;
-//             }
-
-//             return match (*buffer).dwID as SIMCONNECT_RECV_ID {
-//                 SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_OPEN => {
-//                     // let data: &SIMCONNECT_RECV_OPEN = transmute_copy(&(buffer as *const SIMCONNECT_RECV_OPEN));
-//                     Some(Message::Open)
-//                 },
-//                 SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_QUIT => {
-//                     // let data: &SIMCONNECT_RECV_QUIT = transmute_copy(&(buffer as *const SIMCONNECT_RECV_QUIT));
-//                     Some(Message::Quit)
-//                 },
-//                 SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_EXCEPTION => {
-//                     let data: &SIMCONNECT_RECV_EXCEPTION = transmute_copy(&(buffer as *const SIMCONNECT_RECV_EXCEPTION));
-//                     let code = data.dwException;
-
-//                     Some(Message::Exception(code.to_string()))
-//                 },
-//                 SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_SIMOBJECT_DATA => {
-//                     let data: &SIMCONNECT_RECV_SIMOBJECT_DATA = transmute_copy(&(buffer as *const SIMCONNECT_RECV_SIMOBJECT_DATA));
-//                     // let values_ptr = std::ptr::addr_of!(data.dwData) as *const Test;
-//                     // let values = std::ptr::read_unaligned(values_ptr);
-//                     // let id = data.dwDefineID;
-//                     // let length = data.dwDefineCount;
-
-//                     // println!("{}: {:?}, {}", id, values, length);
-
-//                     const length: u32 = data.dwDefineCount;
-//                     let sim_data =  std::ptr::addr_of!(data.dwData);
-//                     let sim_data_ptr = sim_data as *const [f64; length];
-//                     let sim_data_value = std::ptr::read_unaligned(sim_data_ptr);
-
-//                     println!("{:?}, {}", sim_data_value, length);
-
-
-//                     // let variable = &mut self.variables[id as usize];
-
-//                     // variable.value = values;
-
-//                     // Some(Message::Variable(&*variable))
-
-//                     None
-//                 },
-//                 _ => None
-//             };
-//         }
-//     }
-
-//     pub fn observe(&mut self, variable: Variable) -> Result<(), ()> {
-//         let name = CString::new(variable.name.0.clone()).unwrap();
-//         let unit = CString::new(variable.unit.0.clone()).unwrap();
-
-//         self.variables.push(variable);
-
-//         let id = self.variables.len() - 1;
-
-//         unsafe {
-//             let mut result: i64 = 0;
-
-//             result += SimConnect_AddToDataDefinition(
-//                 self.client,
-//                 0,
-//                 name.as_ptr(),
-//                 unit.as_ptr(),
-//                 SIMCONNECT_DATATYPE_SIMCONNECT_DATATYPE_FLOAT64,
-//                 0.0,
-//                 id.try_into().unwrap(),
-//             ) as i64;
-
-//             if id == 0 {
-//                 result += SimConnect_RequestDataOnSimObject(
-//                     self.client,
-//                     0,
-//                     0,
-//                     0,
-//                     SIMCONNECT_PERIOD_SIMCONNECT_PERIOD_SIM_FRAME,
-//                     0,
-//                     0,
-//                     0,
-//                     0,
-//                 ) as i64;
-//             }
-
-//             if result == 0 {
-//                 Ok(())
-//             } else {
-//                 Err(())
-//             }
-//         }
-//     }
-
-//     pub fn transmit(&self, event: &Event) -> Result<(), ()> {
-//         let name = CString::new(event.name.0.clone()).unwrap();
-
-//         unsafe {
-//             let mut result: i64 = 0;
-
-//             result += SimConnect_MapClientEventToSimEvent(
-//                 self.client,
-//                 0,
-//                 name.as_ptr(),
-//             ) as i64;
-
-//             result += SimConnect_TransmitClientEvent(
-//                 self.client,
-//                 0,
-//                 0,
-//                 event.value as u32,
-//                 0,
-//                 0,
-//             ) as i64;
-
-//             if result == 0 {
-//                 Ok(())
-//             } else {
-//                 Err(())
-//             }
-//         }
-//     }
-
-//     // pub fn set(&self, variable: Variable) -> Result<(), ()> {
-//     //     unsafe {
-//     //         let result = SimConnect_SetDataOnSimObject(
-//     //             self.client,
-//     //             define_id,
-//     //             object_id,
-//     //             flags,
-//     //             array_count,
-//     //             size,
-//     //             pntr,
-//     //         );
-
-//     //         if result == 0 {
-//     //             Ok(())
-//     //         } else {
-//     //             Err(())
-//     //         }
-//     //     }
-//     // }
-// }
+const VARIABLES: [Variable; 4] = [
+    Variable {
+        name: "AIRSPEED INDICATED",
+        unit: "Knots",
+    },
+    Variable {
+        name: "PLANE ALTITUDE",
+        unit: "Feet",
+    },
+    Variable {
+        name: "PLANE LATITUDE",
+        unit: "Degrees",
+    },
+    Variable {
+        name: "PLANE LONGITUDE",
+        unit: "Degrees",
+    },
+];
 
 fn main() {
-    
+    let mut client: HANDLE = ptr::null_mut();
+    let name: CString = CString::new("DEMO").unwrap();
+
+    unsafe {
+        if SimConnect_Open(
+            &mut client,
+            name.as_ptr(),
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+            0,
+        ) != 0
+        {
+            panic!("FAILED TO OPEN");
+        }
+    }
+
+    for (index, variable) in VARIABLES.iter().enumerate() {
+        let name: CString = CString::new(variable.name).unwrap();
+        let unit: CString = CString::new(variable.unit).unwrap();
+
+        unsafe {
+            if SimConnect_AddToDataDefinition(
+                client,
+                0,
+                name.as_ptr(),
+                unit.as_ptr(),
+                SIMCONNECT_DATATYPE_SIMCONNECT_DATATYPE_FLOAT64,
+                0.0,
+                index as u32,
+            ) != 0
+            {
+                panic!("FAILED TO ADD DATA DEFINITION");
+            }
+        }
+    }
+
+    unsafe {
+        if SimConnect_RequestDataOnSimObject(
+            client,
+            0,
+            0,
+            0,
+            SIMCONNECT_PERIOD_SIMCONNECT_PERIOD_SIM_FRAME,
+            0,
+            0,
+            0,
+            0,
+        ) != 0
+        {
+            panic!("FAILED TO REQUEST DATA ON SIM OBJECT");
+        }
+    }
+
+    loop {
+        let mut buffer: *mut SIMCONNECT_RECV = ptr::null_mut();
+        let mut buffer_size: DWORD = 32;
+        let buffer_size_ptr: *mut DWORD = &mut buffer_size;
+
+        unsafe {
+            if SimConnect_GetNextDispatch(client, &mut buffer, buffer_size_ptr) != 0 {
+                continue;
+            }
+
+            match (*buffer).dwID as SIMCONNECT_RECV_ID {
+                SIMCONNECT_RECV_ID_SIMCONNECT_RECV_ID_SIMOBJECT_DATA => {
+                    let data: &SIMCONNECT_RECV_SIMOBJECT_DATA =
+                        transmute_copy(&(buffer as *const SIMCONNECT_RECV_SIMOBJECT_DATA));
+                    let values_ptr = std::ptr::addr_of!(data.dwData) as *const Values;
+                    let values = std::ptr::read_unaligned(values_ptr);
+
+                    println!("{:?}", values);
+                }
+                _ => continue,
+            }
+
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
 }
